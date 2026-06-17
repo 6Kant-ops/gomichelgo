@@ -294,6 +294,16 @@ async function viaProxy(url){
   return await Promise.any(tries);
 }
 
+// Zuerst die von der GitHub Action erzeugte lokale Datei lesen (kein CORS/Proxy),
+// und nur falls die fehlt oder leer ist, auf die Proxys zurückfallen.
+async function getDoc(localPath, remoteUrl){
+  try{
+    const r = await fetchTimeout(localPath + "?t=" + Date.now(), 6000);
+    if(r.ok){ const t = await r.text(); if(t && t.length > 200) return t; }
+  }catch(e){ /* lokale Datei nicht vorhanden -> Proxy */ }
+  return await viaProxy(remoteUrl);
+}
+
 function num(text,label,unit){
   const re = new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"\\s*([\\d.,]+)\\s*"+unit,"i");
   const m = text.match(re); return m ? parseFloat(m[1].replace(/,/g,"")) : null;
@@ -424,6 +434,16 @@ async function loadWeather(waypoint){
 }
 
 async function loadRank(){
+  // 1) Lokale rank.txt (von der GitHub Action) bevorzugen
+  try{
+    const r = await fetchTimeout("data/rank.txt?t=" + Date.now(), 6000);
+    if(r.ok){
+      const v = (await r.text()).trim();
+      const m = v.match(/\d+/);
+      if(m){ $("rankVal").textContent="P. "+m[0]; $("rankCard").classList.remove("hide"); return; }
+    }
+  }catch(e){ /* keine lokale Datei -> Frame via Proxy versuchen */ }
+  // 2) Fallback: Frame-Seite über Proxy auslesen
   try{
     const html=await viaProxy(FRAME);
     const txt=html.replace(/<[^>]+>/g," ").replace(/\s+/g," ");
@@ -444,7 +464,7 @@ function startCountdown(){
 async function load(manual){
   const btn=$("refreshBtn"); btn.disabled=true; const orig=btn.textContent; btn.textContent="Lädt…";
   try{
-    const d=parse(await viaProxy(TARGET));
+    const d=parse(await getDoc("data/michel.html", TARGET));
     lastGood=d; render(d);
     loadWeather(d.waypoint);
     loadRank();
