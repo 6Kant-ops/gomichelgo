@@ -5,7 +5,7 @@ name: Update tracker data
 
 on:
   schedule:
-    - cron: '*/5 * * * *'      # alle 5 Minuten (GitHub kann ein paar Minuten verzögern)
+    - cron: '*/3 * * * *'      # alle 5 Minuten (GitHub kann ein paar Minuten verzögern)
   workflow_dispatch:           # erlaubt manuelles Starten im Actions-Tab
 
 permissions:
