@@ -1,0 +1,64 @@
+name: Update tracker data
+
+# Holt Michels Daten von Trackleaders und legt sie ins Repo,
+# damit die Webseite sie ohne CORS-Proxy direkt lesen kann.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'      # alle 5 Minuten (GitHub kann ein paar Minuten verzögern)
+  workflow_dispatch:           # erlaubt manuelles Starten im Actions-Tab
+
+permissions:
+  contents: write              # nötig, damit die Action ins Repo schreiben darf
+
+concurrency:
+  group: tracker-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Repo auschecken
+        uses: actions/checkout@v4
+
+      - name: Daten von Trackleaders holen
+        run: |
+          mkdir -p data
+
+          # Michels Statistikseite (enthält alle Dashboard-Daten)
+          curl -sSL --retry 3 --max-time 30 \
+            -A "Mozilla/5.0 (tracker-bot)" \
+            "https://trackleaders.com/raam26i.php?name=Michel_Bucheli" \
+            -o data/michel.html
+
+          # Platzierung aus der Tracker-/Kartenseite herauslesen (best effort)
+          curl -sSL --retry 2 --max-time 40 \
+            -A "Mozilla/5.0 (tracker-bot)" \
+            "https://trackleaders.com/raam26f.php" -o frame.html || true
+
+          RANK=""
+          if [ -f frame.html ]; then
+            RANK=$(tr '\n' ' ' < frame.html \
+              | sed 's/<[^>]*>/ /g' \
+              | grep -oiE '[0-9]+ *\. *Michel Bucheli' \
+              | head -1 \
+              | grep -oE '^[0-9]+' || true)
+          fi
+          echo "${RANK}" > data/rank.txt
+          rm -f frame.html
+
+          echo "Rang: '${RANK}'"
+          echo "michel.html: $(wc -c < data/michel.html) Bytes"
+
+      - name: Änderungen committen
+        run: |
+          git config user.name  "tracker-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/michel.html data/rank.txt
+          if git diff --staged --quiet; then
+            echo "Keine Änderungen."
+          else
+            git commit -m "Tracker-Daten aktualisiert ($(date -u '+%Y-%m-%d %H:%M UTC'))"
+            git push
+          fi
